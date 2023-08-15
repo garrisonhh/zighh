@@ -1,0 +1,5 @@
+.{
+    .name = "zighh",
+    .version = "0.0.0",
+    .dependencies = .{},
+}
