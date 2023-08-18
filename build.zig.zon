@@ -1,5 +1,10 @@
 .{
     .name = "zighh",
     .version = "0.0.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .@"zig-wcwidth" = .{
+            .url = "https://github.com/garrisonhh/zig-wcwidth/tarball/master",
+            .hash = "12203fb2751cc73d61f7f8c8159837af2970762187c4e66bb898d91cb8022af905e8",
+        },
+    },
 }

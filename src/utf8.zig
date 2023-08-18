@@ -1,6 +1,7 @@
 const std = @import("std");
 const unicode = std.unicode;
 const in_debug = @import("builtin").mode == .Debug;
+const wcwidth = @import("wcwidth");
 
 pub const Block = @import("utf8_blocks.zig").Utf8Block;
 
@@ -180,5 +181,10 @@ pub const Codepoint = packed struct(CodepointInt) {
                 .{fmt},
             ));
         }
+    }
+    
+    /// how wide this codepoint is in terms of terminal cells
+    pub fn printedWidth(self: Self) u2 {
+        return wcwidth.wcWidth(self.c);
     }
 };
