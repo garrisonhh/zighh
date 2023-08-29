@@ -143,7 +143,7 @@ pub fn RefMap(comptime R: type, comptime T: type) type {
             return ref;
         }
 
-        /// free up an id for reusage, deinitializes item if it exists
+        /// free up an id for reusage
         pub fn del(self: *Self, ref: R) void {
             // if this fails, double delete has occurred
             std.debug.assert(self.items.items[ref.index] != null);
