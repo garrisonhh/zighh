@@ -3,8 +3,8 @@
     .version = "0.0.0",
     .dependencies = .{
         .@"zig-wcwidth" = .{
-            .url = "https://github.com/garrisonhh/zig-wcwidth/tarball/master",
-            .hash = "12203fb2751cc73d61f7f8c8159837af2970762187c4e66bb898d91cb8022af905e8",
+            .url = "https://github.com/efjimm/zig-wcwidth/tarball/6b75a6cf9c29d9ed46e6a9619aff98deef2ce17c",
+            .hash = "1220e7c2da3e466432510df6a06bfff2539eaa94288c035c6730e2cb5d47750eece1",
         },
     },
 }
