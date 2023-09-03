@@ -20,6 +20,11 @@ pub fn Ref(
             return Self{ .index = n };
         }
 
+        /// check two refs for id equality
+        pub fn eql(a: Self, b: Self) bool {
+            return a.index == b.index;
+        }
+
         pub fn format(
             self: Self,
             comptime fmt: []const u8,
