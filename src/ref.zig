@@ -32,8 +32,6 @@ pub fn Ref(
             writer: anytype,
         ) @TypeOf(writer).Error!void {
             if (comptime std.mem.eql(u8, fmt, "")) {
-                @compileError("please provide a prefix or other fmt for ref.");
-            } else if (comptime std.mem.eql(u8, fmt, "p")) {
                 const fmt_str = comptime s: {
                     const hex_digits =
                         @divFloor(backing_bits, 4) +
@@ -47,7 +45,7 @@ pub fn Ref(
 
                 try writer.print(fmt_str, .{ @tagName(tag), self.index });
             } else {
-                try writer.print(fmt ++ "{d}", .{self.index});
+                try writer.print("{s}{d}", .{fmt, self.index});
             }
         }
     };
