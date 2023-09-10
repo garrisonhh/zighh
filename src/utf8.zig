@@ -18,6 +18,25 @@ pub const Codepoint = packed struct(CodepointInt) {
         return Self{ .c = comptime try unicode.utf8Decode(str) };
     }
 
+    fn ctSliceLen(comptime str: []const u8) comptime_int {
+        comptime try std.unicode.utf8CountCodepoints(str);
+    }
+
+    pub fn ctString(comptime str: []const u8) [ctSliceLen(str)]Self {
+        comptime {
+            var buf: [ctSliceLen(str)]Self = undefined;
+            var i = 0;
+
+            var iter = parse(str);
+            while (try iter.next()) |c| {
+                buf[i] = c;
+                i += 1;
+            }
+
+            return buf;
+        }
+    }
+
     pub fn eql(self: Self, other: Self) bool {
         return self.c == other.c;
     }
