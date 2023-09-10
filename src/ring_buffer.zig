@@ -20,7 +20,7 @@ pub fn BoundedRingBuffer(
         }
 
         /// add an item to the queue
-        pub fn push(self: *Self, value: T) T {
+        pub fn push(self: *Self, value: T) void {
             std.debug.assert(self.len < cache_len);
 
             const buf_index = (self.start + self.len) % cache_len;
