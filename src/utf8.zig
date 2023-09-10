@@ -19,7 +19,9 @@ pub const Codepoint = packed struct(CodepointInt) {
     }
 
     fn ctSliceLen(comptime str: []const u8) comptime_int {
-        comptime try std.unicode.utf8CountCodepoints(str);
+        comptime {
+            return try std.unicode.utf8CountCodepoints(str);
+        }
     }
 
     pub fn ctString(comptime str: []const u8) [ctSliceLen(str)]Self {
@@ -134,7 +136,8 @@ pub const Codepoint = packed struct(CodepointInt) {
         /// peek at the next codepoint
         pub fn peek(iter: *Iterator) ParseError!?Codepoint {
             var buf: [1]Codepoint = undefined;
-            return try iter.peekN(&buf, 1)[0];
+            const slice = try iter.peekSlice(&buf, 1);
+            return if (slice.len > 0) slice[0] else null;
         }
 
         /// peek a slice of codepoints
@@ -146,13 +149,13 @@ pub const Codepoint = packed struct(CodepointInt) {
             var byte_index = iter.byte_index;
 
             for (0..len) |i| {
-                if (byte_index == iter.text.len) return null;
+                if (byte_index == iter.text.len) return buf[0..i];
 
                 const remaining = iter.text[byte_index..];
                 const cp_bytes = try codepointBytes(remaining, 1);
                 const cp_slice = remaining[0..cp_bytes];
 
-                buf[i] = unicode.utf8Decode(cp_slice) catch {
+                buf[i].c = unicode.utf8Decode(cp_slice) catch {
                     return ParseError.InvalidUtf8;
                 };
 
