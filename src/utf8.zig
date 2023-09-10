@@ -116,36 +116,50 @@ pub const Codepoint = packed struct(CodepointInt) {
             return .{ .text = text };
         }
 
-        fn nextCodepointBytes(iter: *Iterator) ParseError!?usize {
-            // get slice
-            const slice = iter.text[iter.byte_index..];
-            if (slice.len == 0) return null;
+        /// number of bytes for the first `cp_count` codepoints in the string
+        fn codepointBytes(text: []const u8, cp_count: usize) ParseError!usize {
+            var nbytes: usize = 0;
+            for (0..cp_count) |_| {
+                const cp_bytes =
+                    unicode.utf8ByteSequenceLength(text[nbytes]) catch {
+                        return ParseError.InvalidUtf8;
+                    };
 
-            // get codepoint byte len
-            const cp_bytes = unicode.utf8ByteSequenceLength(slice[0]) catch {
-                return ParseError.InvalidUtf8;
-            };
-            if (slice.len < cp_bytes) {
-                return ParseError.InvalidUtf8;
+                nbytes += cp_bytes;
             }
 
-            return cp_bytes;
+            return nbytes;
         }
 
         /// peek at the next codepoint
         pub fn peek(iter: *Iterator) ParseError!?Codepoint {
-            const cp_bytes = (try iter.nextCodepointBytes()) orelse {
-                return null;
-            };
+            var buf: [1]Codepoint = undefined;
+            return try iter.peekN(&buf, 1)[0];
+        }
 
-            const index = iter.byte_index;
-            const cp_slice = iter.text[index .. index + cp_bytes];
+        /// peek a slice of codepoints
+        pub fn peekSlice(
+            iter: *Iterator,
+            buf: []Codepoint,
+            len: usize,
+        ) ParseError![]const Codepoint {
+            var byte_index = iter.byte_index;
 
-            const raw_cp = unicode.utf8Decode(cp_slice) catch {
-                return ParseError.InvalidUtf8;
-            };
+            for (0..len) |i| {
+                if (byte_index == iter.text.len) return null;
 
-            return .{ .c = raw_cp };
+                const remaining = iter.text[byte_index..];
+                const cp_bytes = try codepointBytes(remaining, 1);
+                const cp_slice = remaining[0..cp_bytes];
+
+                buf[i] = unicode.utf8Decode(cp_slice) catch {
+                    return ParseError.InvalidUtf8;
+                };
+
+                byte_index += cp_bytes;
+            }
+
+            return buf[0..len];
         }
 
         /// iterate past a codepoint parsed by peek()
@@ -168,6 +182,11 @@ pub const Codepoint = packed struct(CodepointInt) {
 
             iter.byte_index += bytes;
             iter.cp_index += 1;
+        }
+
+        /// iterate past codepoints parsed by peekSlice()
+        pub fn acceptSlice(iter: *Iterator, slice: []const Codepoint) void {
+            for (slice) |c| iter.accept(c);
         }
 
         /// parse the next codepoint and
