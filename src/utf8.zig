@@ -64,11 +64,6 @@ pub const Codepoint = packed struct(CodepointInt) {
         };
     }
 
-    /// use this to parse bytes into unicode
-    pub fn parse(text: []const u8) Iterator {
-        return Iterator.init(text);
-    }
-
     /// how many bytes it takes to store this character as a sequence
     pub fn byteLength(self: Self) u3 {
         return std.unicode.utf8CodepointSequenceLength(self.c) catch {
@@ -81,6 +76,11 @@ pub const Codepoint = packed struct(CodepointInt) {
         std.debug.assert(buf.len >= self.byteLength());
         const len = std.unicode.utf8Encode(self.c, buf) catch unreachable;
         return buf[0..len];
+    }
+
+    /// use this to parse bytes into unicode
+    pub fn parse(text: []const u8) Iterator {
+        return Iterator.init(text);
     }
 
     /// iterator for unicode codepoints. I could also use std.unicode.Utf8View
@@ -182,7 +182,7 @@ pub const Codepoint = packed struct(CodepointInt) {
             ));
         }
     }
-    
+
     /// how wide this codepoint is in terms of terminal cells
     pub fn printedWidth(self: Self) u2 {
         return wcwidth.wcWidth(self.c);

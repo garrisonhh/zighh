@@ -16,7 +16,7 @@ pub fn Ref(
 
         index: Int,
 
-        pub fn init(n: Int) Self {
+        fn init(n: Int) Self {
             return Self{ .index = n };
         }
 
@@ -45,7 +45,7 @@ pub fn Ref(
 
                 try writer.print(fmt_str, .{ @tagName(tag), self.index });
             } else {
-                try writer.print("{s}{d}", .{fmt, self.index});
+                try writer.print("{s}{d}", .{ fmt, self.index });
             }
         }
     };
