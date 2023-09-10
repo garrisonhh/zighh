@@ -16,7 +16,8 @@ pub fn BoundedRingBuffer(
         len: Index = 0,
 
         pub fn get(self: Self, n: usize) T {
-            return self.buf[n];
+            std.debug.assert(n < self.len);
+            return self.buf[(self.start + n) % cache_len];
         }
 
         /// add an item to the queue
