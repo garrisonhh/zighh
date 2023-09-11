@@ -55,13 +55,13 @@ pub const Codepoint = packed struct(CodepointInt) {
     pub fn isDigit(self: Self, comptime base: comptime_int) bool {
         return switch (base) {
             2...10 => switch (self.c) {
-                '0'...'0' + base => true,
+                '0'...'0' + base - 1 => true,
                 else => false,
             },
             11...36 => switch (self.c) {
                 '0'...'9',
-                'a'...'a' + base - 10,
-                'A'...'A' + base - 10,
+                'a'...'a' + base - 11,
+                'A'...'A' + base - 11,
                 => true,
                 else => false,
             },
