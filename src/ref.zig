@@ -60,21 +60,39 @@ pub fn RefList(comptime R: type, comptime T: type) type {
     return struct {
         const Self = @This();
 
-        items: std.ArrayListUnmanaged(T) = .{},
+        items: std.ArrayListUnmanaged(?T) = .{},
 
         /// release all memory
         pub fn deinit(self: *Self, ally: Allocator) void {
             self.items.deinit(ally);
         }
 
-        pub fn put(self: *Self, ally: Allocator, item: T) Allocator.Error!R {
-            const ref = Ref.init(self.items.items.len);
-            try self.items.append(ally, item);
+        pub fn new(self: *Self, ally: Allocator) Allocator.Error!R {
+            const ref = R.init(@intCast(self.items.items.len));
+            try self.items.append(ally, null);
             return ref;
         }
 
-        pub fn get(self: *const Self, ref: Ref) *T {
-            return &self.items.items[ref.index];
+        pub fn set(self: *const Self, ref: R, item: T,) void {
+            self.items.items[ref.index] = item;
+        }
+
+        pub fn put(self: *Self, ally: Allocator, item: T) Allocator.Error!R {
+            const ref = try self.new(ally);
+            self.set(ref, item);
+            return ref;
+        }
+
+        pub fn getOpt(self: *const Self, ref: R) ?*T {
+            if (self.items.items[ref.index] != null) {
+                return &self.items.items[ref.index].?;
+            }
+
+            return null;
+        }
+
+        pub fn get(self: *const Self, ref: R) *T {
+            return self.getOpt(ref).?;
         }
 
         pub fn iterator(self: *const Self) Iterator {
@@ -86,12 +104,12 @@ pub fn RefList(comptime R: type, comptime T: type) type {
             index: R.Int = 0,
 
             pub fn next(iter: *Iterator) ?*T {
-                if (iter.index >= iter.list.items.len) {
+                if (iter.index >= iter.list.items.items.len) {
                     return null;
                 }
 
                 defer iter.index += 1;
-                return iter.list.items.items[iter.index];
+                return &iter.list.items.items[iter.index].?;
             }
 
             pub const Entry = struct {
@@ -100,7 +118,7 @@ pub fn RefList(comptime R: type, comptime T: type) type {
             };
 
             pub fn nextEntry(iter: *Iterator) ?Entry {
-                const ref = Ref.init(iter.index);
+                const ref = R.init(iter.index);
                 if (iter.next()) |ptr| {
                     return Entry{
                         .ref = ref,
