@@ -124,8 +124,8 @@ pub const Codepoint = packed struct(CodepointInt) {
             for (0..cp_count) |_| {
                 const cp_bytes =
                     unicode.utf8ByteSequenceLength(text[nbytes]) catch {
-                        return ParseError.InvalidUtf8;
-                    };
+                    return ParseError.InvalidUtf8;
+                };
 
                 nbytes += cp_bytes;
             }

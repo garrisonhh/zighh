@@ -51,6 +51,69 @@ pub fn Ref(
     };
 }
 
+/// a simpler version of RefMap, which just wraps an arraylist and implements
+/// a similar interface to RefMap.
+///
+/// useful for applications where you just need type safety for handles to a
+/// bunch of items you're creating in one shot.
+pub fn RefList(comptime R: type, comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        items: std.ArrayListUnmanaged(T) = .{},
+
+        /// release all memory
+        pub fn deinit(self: *Self, ally: Allocator) void {
+            self.items.deinit(ally);
+        }
+
+        pub fn put(self: *Self, ally: Allocator, item: T) Allocator.Error!R {
+            const ref = Ref.init(self.items.items.len);
+            try self.items.append(ally, item);
+            return ref;
+        }
+
+        pub fn get(self: *const Self, ref: Ref) *T {
+            return &self.items.items[ref.index];
+        }
+
+        pub fn iterator(self: *const Self) Iterator {
+            return .{ .list = self };
+        }
+
+        pub const Iterator = struct {
+            list: *const Self,
+            index: R.Int = 0,
+
+            pub fn next(iter: *Iterator) ?*T {
+                if (iter.index >= iter.list.items.len) {
+                    return null;
+                }
+
+                defer iter.index += 1;
+                return iter.list.items.items[iter.index];
+            }
+
+            pub const Entry = struct {
+                ref: R,
+                ptr: *T,
+            };
+
+            pub fn nextEntry(iter: *Iterator) ?Entry {
+                const ref = Ref.init(iter.index);
+                if (iter.next()) |ptr| {
+                    return Entry{
+                        .ref = ref,
+                        .ptr = ptr,
+                    };
+                }
+
+                return null;
+            }
+        };
+    };
+}
+
 /// a non-moving persistent handle table implementation. create with a Ref.
 pub fn RefMap(comptime R: type, comptime T: type) type {
     return struct {
@@ -172,6 +235,10 @@ pub fn RefMap(comptime R: type, comptime T: type) type {
             return self.items.items.len - self.unused.items.len;
         }
 
+        pub fn iterator(self: *const Self) Iterator {
+            return Iterator{ .map = self };
+        }
+
         pub const Iterator = struct {
             map: *const Self,
             index: R.Int = 0,
@@ -220,9 +287,5 @@ pub fn RefMap(comptime R: type, comptime T: type) type {
                 };
             }
         };
-
-        pub fn iterator(self: *const Self) Iterator {
-            return Iterator{ .map = self };
-        }
     };
 }
