@@ -73,7 +73,11 @@ pub fn RefList(comptime R: type, comptime T: type) type {
             return ref;
         }
 
-        pub fn set(self: *const Self, ref: R, item: T,) void {
+        pub fn set(
+            self: *const Self,
+            ref: R,
+            item: T,
+        ) void {
             self.items.items[ref.index] = item;
         }
 
@@ -93,6 +97,10 @@ pub fn RefList(comptime R: type, comptime T: type) type {
 
         pub fn get(self: *const Self, ref: R) *T {
             return self.getOpt(ref).?;
+        }
+
+        pub fn count(self: *const Self) usize {
+            return self.items.items.len;
         }
 
         pub fn iterator(self: *const Self) Iterator {
