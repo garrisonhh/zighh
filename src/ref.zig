@@ -244,6 +244,13 @@ pub fn RefMap(comptime R: type, comptime T: type) type {
             self.items.items[ref.index] = null;
         }
 
+        /// free up an id created with `new` and never `set`
+        pub fn delUnused(self: *Self, ref: R) void {
+            std.debug.assert(self.items.items[ref.index] == null);
+            // cap ensured by new() behavior
+            self.unused.appendAssumeCapacity(ref);
+        }
+
         /// retrieve a ref safely
         pub fn getOpt(self: Self, ref: R) ?*T {
             // should never go out of bounds assuming refs are only being
