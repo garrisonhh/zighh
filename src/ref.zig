@@ -51,6 +51,95 @@ pub fn Ref(
     };
 }
 
+/// a simpler version of RefMap, which just wraps an arraylist and implements
+/// a similar interface to RefMap.
+///
+/// useful for applications where you just need type safety for handles to a
+/// bunch of items you're creating in one shot.
+pub fn RefList(comptime R: type, comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        items: std.ArrayListUnmanaged(?T) = .{},
+
+        /// release all memory
+        pub fn deinit(self: *Self, ally: Allocator) void {
+            self.items.deinit(ally);
+        }
+
+        pub fn new(self: *Self, ally: Allocator) Allocator.Error!R {
+            const ref = R.init(@intCast(self.items.items.len));
+            try self.items.append(ally, null);
+            return ref;
+        }
+
+        pub fn set(
+            self: *const Self,
+            ref: R,
+            item: T,
+        ) void {
+            self.items.items[ref.index] = item;
+        }
+
+        pub fn put(self: *Self, ally: Allocator, item: T) Allocator.Error!R {
+            const ref = try self.new(ally);
+            self.set(ref, item);
+            return ref;
+        }
+
+        pub fn getOpt(self: *const Self, ref: R) ?*T {
+            if (self.items.items[ref.index] != null) {
+                return &self.items.items[ref.index].?;
+            }
+
+            return null;
+        }
+
+        pub fn get(self: *const Self, ref: R) *T {
+            return self.getOpt(ref).?;
+        }
+
+        pub fn count(self: *const Self) usize {
+            return self.items.items.len;
+        }
+
+        pub fn iterator(self: *const Self) Iterator {
+            return .{ .list = self };
+        }
+
+        pub const Iterator = struct {
+            list: *const Self,
+            index: R.Int = 0,
+
+            pub fn next(iter: *Iterator) ?*T {
+                if (iter.index >= iter.list.items.items.len) {
+                    return null;
+                }
+
+                defer iter.index += 1;
+                return &iter.list.items.items[iter.index].?;
+            }
+
+            pub const Entry = struct {
+                ref: R,
+                ptr: *T,
+            };
+
+            pub fn nextEntry(iter: *Iterator) ?Entry {
+                const ref = R.init(iter.index);
+                if (iter.next()) |ptr| {
+                    return Entry{
+                        .ref = ref,
+                        .ptr = ptr,
+                    };
+                }
+
+                return null;
+            }
+        };
+    };
+}
+
 /// a non-moving persistent handle table implementation. create with a Ref.
 pub fn RefMap(comptime R: type, comptime T: type) type {
     return struct {
@@ -155,6 +244,13 @@ pub fn RefMap(comptime R: type, comptime T: type) type {
             self.items.items[ref.index] = null;
         }
 
+        /// free up an id created with `new` and never `set`
+        pub fn delUnused(self: *Self, ref: R) void {
+            std.debug.assert(self.items.items[ref.index] == null);
+            // cap ensured by new() behavior
+            self.unused.appendAssumeCapacity(ref);
+        }
+
         /// retrieve a ref safely
         pub fn getOpt(self: Self, ref: R) ?*T {
             // should never go out of bounds assuming refs are only being
@@ -170,6 +266,10 @@ pub fn RefMap(comptime R: type, comptime T: type) type {
         /// the number of refs in use
         pub fn count(self: Self) usize {
             return self.items.items.len - self.unused.items.len;
+        }
+
+        pub fn iterator(self: *const Self) Iterator {
+            return Iterator{ .map = self };
         }
 
         pub const Iterator = struct {
@@ -220,9 +320,5 @@ pub fn RefMap(comptime R: type, comptime T: type) type {
                 };
             }
         };
-
-        pub fn iterator(self: *const Self) Iterator {
-            return Iterator{ .map = self };
-        }
     };
 }
