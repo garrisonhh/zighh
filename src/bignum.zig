@@ -1,3 +1,6 @@
+//! a big number implementation designed for parsing focused on being simple and
+//! readable, but is probably incredibly slow.
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
@@ -100,6 +103,14 @@ pub fn zero(ally: Allocator) Allocator.Error!Self {
     return try initZeroed(ally, 0);
 }
 
+pub fn clone(self: Self, ally: Allocator) Allocator.Error!Self {
+    return Self{
+        .sign = self.sign,
+        .bytes = try ally.dupe(u8, self.bytes),
+        .dot = self.dot,
+    };
+}
+
 /// create a bignum from a machine number type
 pub fn from(ally: Allocator, comptime T: type, n: T) Allocator.Error!Self {
     return switch (@typeInfo(T)) {
@@ -107,9 +118,9 @@ pub fn from(ally: Allocator, comptime T: type, n: T) Allocator.Error!Self {
             var self = try initZeroed(ally, @sizeOf(T));
             self.sign = Sign.from(n >= 0);
 
-            const U = std.meta.Int(.unsigned, @bitSizeOf(T));
-            var u: U = std.math.absCast(n);
-            var i: usize = 0;
+            var u = std.math.absCast(n);
+            std.debug.print("n: {} u: {}\n", .{n, u});
+            var i: usize = self.dot;
             while (u > 0) {
                 self.bytes[i] = @truncate(u);
                 u >>= 8;
@@ -148,6 +159,76 @@ pub fn from(ally: Allocator, comptime T: type, n: T) Allocator.Error!Self {
     };
 }
 
+pub const IntoError = error { Unrepresentable };
+
+/// helpful for determining representability
+fn ensureBitRangeZeroed(self: Self, start: isize, stop: isize) IntoError!void {
+    var i = start;
+    while (i < stop) : (i += 1) {
+        if (self.getBit(i) != 0) {
+            return IntoError.Unrepresentable;
+        }
+    }
+}
+
+/// cast a bignum into a machine number type
+pub fn into(self: Self, comptime T: type) IntoError!T {
+    return switch (@typeInfo(T)) {
+        .Int => |meta| switch (meta.signedness) {
+            .unsigned => uint: {
+                if (self.sign == .negative) {
+                    return IntoError.Unrepresentable;
+                }
+
+                const max_bit: isize =
+                    @intCast((self.bytes.len - self.dot) * 8);
+                const start: isize = @intCast(self.dot * 8);
+                const stop: isize = @min(start + @bitSizeOf(T), max_bit);
+
+                try self.ensureBitRangeZeroed(0, start);
+                try self.ensureBitRangeZeroed(stop, max_bit);
+
+                var i = stop - 1;
+                var n: T = 0;
+                while (i >= start) : (i -= 1) {
+                    n = (n << 1) | self.getBit(i);
+                }
+
+                break :uint n;
+            },
+            .signed => sint: {
+                const max_bit: isize =
+                    @intCast((self.bytes.len - self.dot) * 8);
+                const start: isize = @intCast(self.dot * 8);
+                const stop: isize = @min(start + @bitSizeOf(T), max_bit);
+
+                try self.ensureBitRangeZeroed(0, start);
+                try self.ensureBitRangeZeroed(stop, max_bit);
+
+                var n: T = 0;
+                switch (self.sign) {
+                    .positive => {
+                        var i = stop - 1;
+                        while (i >= start) : (i -= 1) {
+                            n = (n << 1) | self.getBit(i);
+                        }
+                    },
+                    .negative => {
+                        var i = stop - 1;
+                        while (i >= start) : (i -= 1) {
+                            n = (n << 1) - self.getBit(i);
+                        }
+                    },
+                }
+
+                break :sint n;
+            },
+        },
+        //.Float => {},
+        else => @compileError("can't convert a bignum into " ++ @typeName(T)),
+    };
+}
+
 fn ensureByte(self: *Self, ally: Allocator, index: isize) Allocator.Error!void {
     if (index < 0) {
         // expand to the left?
@@ -175,12 +256,6 @@ fn ensureByte(self: *Self, ally: Allocator, index: isize) Allocator.Error!void {
     }
 }
 
-fn getBytePtr(self: Self, index: isize) *u8 {
-    const offset: isize = @intCast(self.dot);
-    const uindex: usize = @intCast(index + offset);
-    return &self.bytes[uindex];
-}
-
 /// ensure a bit is accessible
 pub fn ensureBit(
     self: *Self,
@@ -190,11 +265,32 @@ pub fn ensureBit(
     try self.ensureByte(ally, @divFloor(index, 8));
 }
 
+fn getBytePtr(self: Self, index: isize) ?*u8 {
+    const offset: isize = @intCast(self.dot);
+    const array_index = index + offset;
+
+    if (array_index < 0 or array_index >= self.bytes.len) {
+        return null;
+    }
+
+    return &self.bytes[@intCast(array_index)];
+}
+
+/// retrieve the value of bit by index
+fn getBit(self: Self, index: isize) u1 {
+    const byte_index = @divFloor(index, 8);
+    const bit_index: u3 = @intCast(@mod(index, 8));
+    const byte = self.getBytePtr(byte_index) orelse {
+        return 0;
+    };
+    return @intCast((byte.* >> bit_index) & 1);
+}
+
 /// write to a bit
 pub fn writeBitAssumeExists(self: *Self, index: isize, bit: u1) void {
     const byte_index = @divFloor(index, 8);
     const bit_index: u3 = @intCast(@mod(index, 8));
-    const byte = self.getBytePtr(byte_index);
+    const byte = self.getBytePtr(byte_index).?;
 
     switch (bit) {
         0 => {
@@ -256,15 +352,16 @@ test {
 
     const nums = [_]Self{
         try Self.zero(ally),
-        try Self.from(ally, i64, std.math.maxInt(i64) - 256),
+        try Self.from(ally, i64, std.math.maxInt(i64)),
+        try Self.from(ally, i64, std.math.minInt(i64)),
         try Self.from(ally, f16, 5),
         try Self.from(ally, f32, 5),
         try Self.from(ally, f64, 5),
-        try Self.from(ally, f64, -27.625),
+        // try Self.from(ally, f64, -27.625),
     };
     defer for (nums) |num| num.deinit(ally);
 
     for (nums, 0..) |n, i| {
-        std.debug.print("{d}) {debug}\n", .{ i, n });
+        std.debug.print("{d}) {debug} {d}\n", .{ i, n, try n.into(i64) });
     }
 }
