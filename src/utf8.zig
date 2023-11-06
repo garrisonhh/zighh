@@ -124,8 +124,8 @@ pub const Codepoint = packed struct(CodepointInt) {
             for (0..cp_count) |_| {
                 const cp_bytes =
                     unicode.utf8ByteSequenceLength(text[nbytes]) catch {
-                        return ParseError.InvalidUtf8;
-                    };
+                    return ParseError.InvalidUtf8;
+                };
 
                 nbytes += cp_bytes;
             }
@@ -177,13 +177,7 @@ pub const Codepoint = packed struct(CodepointInt) {
                 std.debug.assert(pk.eql(c));
             }
 
-            const bytes = unicode.utf8CodepointSequenceLength(c.c) catch {
-                // this codepoint should have come from peek, and therefore must
-                // be correct
-                unreachable;
-            };
-
-            iter.byte_index += bytes;
+            iter.byte_index += c.byteLength();
             iter.cp_index += 1;
         }
 
@@ -192,7 +186,7 @@ pub const Codepoint = packed struct(CodepointInt) {
             for (slice) |c| iter.accept(c);
         }
 
-        /// parse the next codepoint and
+        /// parse the next codepoint and accept it
         pub fn next(iter: *Iterator) ParseError!?Codepoint {
             if (try iter.peek()) |c| {
                 iter.accept(c);
