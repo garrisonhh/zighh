@@ -133,6 +133,8 @@ pub fn from(ally: Allocator, comptime T: type, n: T) Allocator.Error!Self {
         },
         .Float => self: {
             const f = floatBits(T, n);
+            std.debug.print("from bits: {d} => {debug}\n", .{n, f});
+
             const hi_bit: isize = @intCast(f.biasedExponent());
             const mantissa_req_bits =
                 @TypeOf(f).mantissa_bits - @ctz(f.mantissa);
@@ -248,10 +250,9 @@ pub fn into(self: Self, comptime T: type) IntoError!T {
             try self.ensureBitRangeZeroed(min_bit, mantissa_stop);
             try self.ensureBitRangeZeroed(first_bit + 1, max_bit);
 
-            const dot_pos: isize = @intCast(8 * self.dot);
             const exponent = std.math.cast(
                 Bits.Exponent,
-                @as(isize, @intCast(Bits.bias)) + first_bit - dot_pos,
+                @as(isize, @intCast(Bits.bias)) + first_bit,
             ) orelse {
                 return IntoError.Unrepresentable;
             };
@@ -272,6 +273,7 @@ pub fn into(self: Self, comptime T: type) IntoError!T {
                 .exponent = exponent,
                 .mantissa = mantissa,
             };
+            std.debug.print("bits: {}\n", .{bits});
 
             break :float @bitCast(bits);
         },
