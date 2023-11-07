@@ -28,15 +28,18 @@ pub fn FloatBits(comptime F: type) type {
         pub const exponent_bits = std.math.floatExponentBits(F);
         pub const mantissa_bits = std.math.floatFractionalBits(F);
 
-        pub const Exponent = std.meta.Int(.signed, exponent_bits + 1);
-        pub const bias: Exponent = (1 << exponent_bits - 1) - 1;
+        pub const BiasExponent = std.meta.Int(.signed, exponent_bits + 1);
+        pub const bias: BiasExponent = (1 << exponent_bits - 1) - 1;
 
-        mantissa: std.meta.Int(.unsigned, mantissa_bits),
-        _: if (F == f80) u1 else u0 = undefined,
-        exponent: std.meta.Int(.unsigned, exponent_bits),
+        pub const Mantissa = std.meta.Int(.unsigned, mantissa_bits);
+        pub const Exponent = std.meta.Int(.unsigned, exponent_bits);
+
+        mantissa: Mantissa,
+        _: if (F == f80) u1 else u0 = if (F == f80) 1 else undefined,
+        exponent: Exponent,
         sign: u1,
 
-        pub fn biasedExponent(self: @This()) Exponent {
+        pub fn biasedExponent(self: @This()) BiasExponent {
             const WiderExponent = std.meta.Int(.signed, exponent_bits + 2);
             const e: WiderExponent = @intCast(self.exponent);
             const b: WiderExponent = @intCast(bias);
@@ -119,7 +122,6 @@ pub fn from(ally: Allocator, comptime T: type, n: T) Allocator.Error!Self {
             self.sign = Sign.from(n >= 0);
 
             var u = std.math.absCast(n);
-            std.debug.print("n: {} u: {}\n", .{n, u});
             var i: usize = self.dot;
             while (u > 0) {
                 self.bytes[i] = @truncate(u);
@@ -144,13 +146,15 @@ pub fn from(ally: Allocator, comptime T: type, n: T) Allocator.Error!Self {
 
             self.writeBitAssumeExists(hi_bit, 1);
 
-            var bits = f.mantissa >> @ctz(f.mantissa);
-            var i = lo_bit;
-            while (i < hi_bit) : ({
-                bits >>= 1;
-                i += 1;
-            }) {
-                self.writeBitAssumeExists(i, @intCast(bits & 1));
+            if (f.mantissa != 0) {
+                var bits = f.mantissa >> @ctz(f.mantissa);
+                var i = lo_bit;
+                while (i < hi_bit) : ({
+                    bits >>= 1;
+                    i += 1;
+                }) {
+                    self.writeBitAssumeExists(i, @intCast(bits & 1));
+                }
             }
 
             break :self self;
@@ -224,7 +228,53 @@ pub fn into(self: Self, comptime T: type) IntoError!T {
                 break :sint n;
             },
         },
-        //.Float => {},
+        .Float => float: {
+            const Bits = FloatBits(T);
+
+            const max_bit: isize = @intCast((self.bytes.len - self.dot) * 8);
+            const min_bit = 8 * -@as(isize, @intCast(self.dot));
+
+            var first_bit: isize = max_bit - 1;
+            while (first_bit > min_bit) {
+                if (self.getBit(first_bit) != 0) break;
+                first_bit -= 1;
+            } else {
+                // value is zero
+                break :float 0;
+            }
+
+            const mantissa_stop = first_bit - Bits.mantissa_bits - 1;
+
+            try self.ensureBitRangeZeroed(min_bit, mantissa_stop);
+            try self.ensureBitRangeZeroed(first_bit + 1, max_bit);
+
+            const dot_pos: isize = @intCast(8 * self.dot);
+            const exponent = std.math.cast(
+                Bits.Exponent,
+                @as(isize, @intCast(Bits.bias)) + first_bit - dot_pos,
+            ) orelse {
+                return IntoError.Unrepresentable;
+            };
+
+            var mantissa: Bits.Mantissa = 0;
+            for (0..Bits.mantissa_bits) |i| {
+                const bit_index = first_bit - @as(isize, @intCast(i)) - 1;
+                const bit: Bits.Mantissa = self.getBit(bit_index);
+
+                mantissa |= bit << @intCast(Bits.mantissa_bits - i - 1);
+            }
+
+            const bits = Bits{
+                .sign = switch (self.sign) {
+                    .positive => 0,
+                    .negative => 1,
+                },
+                .exponent = exponent,
+                .mantissa = mantissa,
+            };
+
+            break :float @bitCast(bits);
+        },
         else => @compileError("can't convert a bignum into " ++ @typeName(T)),
     };
 }
@@ -332,7 +382,7 @@ pub fn format(
         while (bytes.next()) |x| {
             i -= 1;
 
-            try writer.print("{x:0>2}", .{x});
+            try writer.print("{b:0>8}", .{x});
 
             if (i == self.dot) {
                 try writer.writeByte('.');
@@ -352,16 +402,33 @@ test {
 
     const nums = [_]Self{
         try Self.zero(ally),
+        try Self.from(ally, i16, std.math.maxInt(i16)),
+        try Self.from(ally, i16, std.math.minInt(i16)),
         try Self.from(ally, i64, std.math.maxInt(i64)),
         try Self.from(ally, i64, std.math.minInt(i64)),
         try Self.from(ally, f16, 5),
         try Self.from(ally, f32, 5),
         try Self.from(ally, f64, 5),
-        // try Self.from(ally, f64, -27.625),
+        try Self.from(ally, f64, std.math.floatMin(f64)),
+        try Self.from(ally, f64, -std.math.floatMin(f64)),
+        try Self.from(ally, f64, std.math.floatMax(f64)),
+        try Self.from(ally, f64, -std.math.floatMax(f64)),
+        try Self.from(ally, f64, -27.625),
     };
     defer for (nums) |num| num.deinit(ally);
 
     for (nums, 0..) |n, i| {
-        std.debug.print("{d}) {debug} {d}\n", .{ i, n, try n.into(i64) });
+        std.debug.print("{d}) {debug}\n", .{ i, n });
+
+        if (n.into(f64)) |f| {
+            std.debug.print("{d}\n", .{f});
+        } else |_| {
+            std.debug.print("<unrepresentable as f64>\n", .{});
+        }
+        if (n.into(i64)) |d| {
+            std.debug.print("{}\n", .{d});
+        } else |_| {
+            std.debug.print("<unrepresentable as i64>\n", .{});
+        }
     }
 }
