@@ -133,7 +133,6 @@ pub fn from(ally: Allocator, comptime T: type, n: T) Allocator.Error!Self {
         },
         .Float => self: {
             const f = floatBits(T, n);
-            std.debug.print("from bits: {d} => {debug}\n", .{n, f});
 
             const hi_bit: isize = @intCast(f.biasedExponent());
             const mantissa_req_bits =
@@ -273,7 +272,6 @@ pub fn into(self: Self, comptime T: type) IntoError!T {
                 .exponent = exponent,
                 .mantissa = mantissa,
             };
-            std.debug.print("bits: {}\n", .{bits});
 
             break :float @bitCast(bits);
         },
@@ -402,35 +400,62 @@ pub fn format(
 test {
     const ally = std.testing.allocator;
 
-    const nums = [_]Self{
-        try Self.zero(ally),
-        try Self.from(ally, i16, std.math.maxInt(i16)),
-        try Self.from(ally, i16, std.math.minInt(i16)),
-        try Self.from(ally, i64, std.math.maxInt(i64)),
-        try Self.from(ally, i64, std.math.minInt(i64)),
-        try Self.from(ally, f16, 5),
-        try Self.from(ally, f32, 5),
-        try Self.from(ally, f64, 5),
-        try Self.from(ally, f64, std.math.floatMin(f64)),
-        try Self.from(ally, f64, -std.math.floatMin(f64)),
-        try Self.from(ally, f64, std.math.floatMax(f64)),
-        try Self.from(ally, f64, -std.math.floatMax(f64)),
-        try Self.from(ally, f64, -27.625),
+    const NumTest = union(enum) {
+        int: struct {
+            type: type,
+            value: comptime_int,
+        },
+        float: struct {
+            type: type,
+            value: comptime_float,
+        },
     };
-    defer for (nums) |num| num.deinit(ally);
 
-    for (nums, 0..) |n, i| {
-        std.debug.print("{d}) {debug}\n", .{ i, n });
-
-        if (n.into(f64)) |f| {
-            std.debug.print("{d}\n", .{f});
-        } else |_| {
-            std.debug.print("<unrepresentable as f64>\n", .{});
+    const case = struct {
+        fn f(comptime T: type, comptime v: anytype) NumTest {
+            return comptime switch (@typeInfo(T)) {
+                .Int => .{ .int = .{ .type = T, .value = v } },
+                .Float => .{ .float = .{ .type = T, .value = v } },
+                else => @compileError("invalid type"),
+            };
         }
-        if (n.into(i64)) |d| {
-            std.debug.print("{}\n", .{d});
-        } else |_| {
-            std.debug.print("<unrepresentable as i64>\n", .{});
+    }.f;
+
+    const nums = comptime [_]NumTest{
+        case(i16, std.math.maxInt(i16)),
+        case(i16, std.math.minInt(i16)),
+        case(i64, std.math.maxInt(i64)),
+        case(i64, std.math.minInt(i64)),
+        case(f16, 5),
+        case(f32, 5),
+        case(f64, 5),
+        case(f64, std.math.floatMin(f64)),
+        case(f64, -std.math.floatMin(f64)),
+        case(f64, std.math.floatMax(f64)),
+        case(f64, -std.math.floatMax(f64)),
+        case(f64, -27.625),
+    };
+
+    inline for (nums) |num_test| {
+        switch (num_test) {
+            .int => |int| {
+                const num = try Self.from(ally, int.type, int.value);
+                defer num.deinit(ally);
+
+                try std.testing.expectEqual(
+                    @as(int.type, int.value),
+                    try num.into(int.type),
+                );
+            },
+            .float => |float| {
+                const num = try Self.from(ally, float.type, float.value);
+                defer num.deinit(ally);
+
+                try std.testing.expectEqual(
+                    @as(float.type, float.value),
+                    try num.into(float.type),
+                );
+            },
         }
     }
 }
